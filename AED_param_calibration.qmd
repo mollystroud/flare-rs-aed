@@ -1,0 +1,69 @@
+---
+title: "AED_param_calibration"
+author: "Molly Stroud"
+format: html
+editor: visual
+---
+
+```{r install}
+install.packages("pacman")
+pacman::p_load(tidyverse, dplyr, viridis)
+```
+
+Look at DO head maps over sites
+
+```{r collect sites}
+sites <- c("PRLA", "PRPO", "SUGG", "LIRO", "CRAM", "BARC") 
+alldata <- data.frame()
+for(site in sites){
+  files <- list.files(paste0('data/neonstore/', product, '/', site),
+                      recursive = T, pattern = 'waq', full.names = T)
+  sitedata <- data.frame()
+  for(file in files){
+    data <- read_csv(file) |>
+      filter(sensorDepthFinalQF != 1)
+    data$site <- site
+    sitedata <- rbind(sitedata, data)
+  }
+  alldata <- rbind(sitedata, alldata)
+}
+
+wq_data <- alldata |>
+    select(startDateTime, sensorDepth, specificConductance, dissolvedOxygen,
+           pH, chlorophyll, turbidity, fDOM, site) |>
+    pivot_longer(cols = specificConductance:fDOM, names_to = "variable", 
+                 values_to = "observation") |>
+    mutate(datetime = as.Date(startDateTime)) |>
+    select(-startDateTime) |>
+    rename(depth = sensorDepth) |>
+    group_by(depth, variable, site) |>
+    mutate(observation = mean(observation)) |>
+  filter(!is.na(depth)) |>
+  filter(!is.na(observation)) |>
+  filter(variable == "dissolvedOxygen")
+
+```
+
+```{r plot oxygen heat map}
+aggregated <- wq_data |>
+  group_by(month = lubridate::floor_date(datetime, "month"), depth, site) %>%
+    summarize(monthly_obs = mean(observation, na.rm = T))
+
+ggplot(aggregated[-4369,], aes(x = month, y = depth, fill = monthly_obs)) +
+  geom_tile() + 
+  facet_wrap(~site, nrow = 2, scales = 'free_y') +
+  scale_fill_viridis() +
+  theme_bw() +
+  scale_y_reverse() +
+  labs(x = "", y = "Depth (m)", fill = "DO (mg/L)")
+
+
+
+ggplot(wq_data, aes(x = datetime, y = depth, fill = observation)) +
+  geom_tile() + 
+  facet_wrap(~site, nrow = 2, scales = 'free_y') +
+  scale_fill_viridis() +
+  theme_bw()
+
+ggsave("DO_heatmap.png", width = 6, height = 4, dpi = 400, units = "in")
+```
