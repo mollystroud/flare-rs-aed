@@ -46,10 +46,13 @@ wq_data <- alldata |>
 
 ```{r plot oxygen heat map}
 aggregated <- wq_data |>
-  group_by(month = lubridate::floor_date(datetime, "month"), depth, site) %>%
-    summarize(monthly_obs = mean(observation, na.rm = T))
+  group_by(month = lubridate::floor_date(datetime, "month"), depth, site) |>
+    summarize(monthly_obs = mean(observation, na.rm = T)) |>
+  ungroup() |>
+  group_by(approxdepth = round(depth), site, month) |>
+  summarize(avgobs = mean(monthly_obs, na.rm = T))
 
-ggplot(aggregated[-4369,], aes(x = month, y = depth, fill = monthly_obs)) +
+ggplot(aggregated[-1599,], aes(x = month, y = approxdepth, fill = avgobs)) +
   geom_tile() + 
   facet_wrap(~site, nrow = 2, scales = 'free_y') +
   scale_fill_viridis() +
@@ -66,4 +69,32 @@ ggplot(wq_data, aes(x = datetime, y = depth, fill = observation)) +
   theme_bw()
 
 ggsave("DO_heatmap.png", width = 6, height = 4, dpi = 400, units = "in")
+```
+
+```{r get phosphorus and nitrogen}
+product <- "DP1.20163.001" # C/N/P/isotopes/chla/pheophytin/etc.
+pn_data <- data.frame()
+for(site in sites){
+  files <- list.files(paste0('data/neonstore/', product, '/', site),
+                      recursive = T, pattern = 'Comp', full.names = T)
+  sitedata <- data.frame()
+  for(file in files){
+    init <- read_csv(file, show_col_types = F) 
+    data <- init |>
+      select(any_of(c("siteID", "collectDate", "analyte", "analyteConcentration")))
+    if(ncol(data) == 4){
+          sitedata <- rbind(sitedata, data)
+    }
+  }
+  pn_data <- rbind(sitedata, pn_data)
+}
+
+nitro <- pn_data |>
+  filter(analyte == "nitrogen")
+
+ggplot(pn_data, aes(x = collectDate, y = analyteConcentration)) +
+  geom_line() +
+  facet_wrap(~siteID, nrow = 2) +
+  geom_point() +
+  theme_bw()
 ```
